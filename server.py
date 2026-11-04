@@ -41,7 +41,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path == "/leaderboard":
+        if self.path == "/":
+            with open("game.html", "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/leaderboard":
             conn = sqlite3.connect(DB_FILE)
             rows = conn.execute(
                 "SELECT name, score FROM scores ORDER BY score DESC LIMIT 10"
