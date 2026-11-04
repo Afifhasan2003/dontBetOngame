@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import sqlite3
+import os
 
 # SQLite is just a file on disk — no separate database server to run.
 # This creates scores.db next to server.py if it doesn't already exist,
@@ -76,6 +77,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
-    server = HTTPServer(("localhost", 8000), Handler)
-    print("Server running on http://localhost:8000")
+    port = int(os.environ.get("PORT", 8000))  # Render sets PORT; falls back to 8000 locally
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    print(f"Server running on port {port}")
     server.serve_forever()
