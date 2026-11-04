@@ -167,6 +167,11 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") player.lane = Math.min(LANES - 1, player.lane + 1);
 });
 
+fetch(API + "/leaderboard")
+  .then(res => res.json())
+  .then(renderLeaderboard)
+  .catch(err => console.error("Couldn't reach server:", err));
+
 loop();
 </script>
 </body>
