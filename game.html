@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Reflex Dodge</title>
+<style>
+  body { background:#111; color:#eee; font-family:sans-serif; display:flex; justify-content:center; align-items:flex-start; gap:30px; margin-top:20px; }
+  #gameArea { display:flex; flex-direction:column; align-items:center; }
+  canvas { background:#1c1c1c; border:2px solid #444; margin-top:10px; }
+  #score { font-size:24px; }
+  #gameOver { font-size:28px; color:#ff5050; display:none; margin-top:10px; }
+  #leaderboard { width:180px; background:#1c1c1c; border:2px solid #444; padding:10px 15px; margin-top:10px; }
+  #leaderboard h3 { margin-top:0; }
+
+  #nameOverlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:15px; }
+  #nameOverlay input { font-size:18px; padding:6px; }
+  #nameOverlay button { font-size:18px; padding:6px 16px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div id="nameOverlay">
+  <div style="font-size:22px;">Enter your name to start</div>
+  <input id="nameInput" type="text" value="Player" maxlength="20">
+  <button id="startBtn">Start Game</button>
+</div>
+
+<div id="gameArea">
+  <div id="score">Score: 0</div>
+  <canvas id="game" width="300" height="500"></canvas>
+  <div id="gameOver">Game Over — press R to restart</div>
+</div>
+
+<div id="leaderboard"><h3>Leaderboard</h3><div id="leaderboardList"></div></div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const gameOverEl = document.getElementById("gameOver");
+
+const LANES = 3;
+const LANE_WIDTH = canvas.width / LANES;
+const BOX_SIZE = 40;
+const BOX_Y = canvas.height - 60;
+
+let player = { lane: 1 }; // start in middle lane
+let arrows = []; // each: {lane, y, height, speed}
+let score = 0;
+let frame = 0;
+let spawnTimer = 0;
+let running = true;
+let started = false;   // true once the player has entered a name and clicked Start
+let playerName = "Player";
+
+document.getElementById("startBtn").addEventListener("click", () => {
+  const val = document.getElementById("nameInput").value.trim();
+  playerName = val || "Player";
+  document.getElementById("nameOverlay").style.display = "none";
+  started = true;
+});
+
+function resetGame() {
+  player.lane = 1;
+  arrows = [];
+  score = 0;
+  frame = 0;
+  spawnTimer = 0;
+  running = true;
+  gameOverEl.style.display = "none";
+}
+
+function spawnArrow() {
+  const lane = Math.floor(Math.random() * LANES);
+  const height = 40 + Math.random() * 80; // varying lengths
+  arrows.push({ lane, y: -height, height, speed: 3 + score / 500 });
+}
+
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function update() {
+  if (!started || !running) return;
+  frame++;
+  spawnTimer++;
+
+  if (spawnTimer > 40) {
+    spawnArrow();
+    spawnTimer = 0;
+  }
+
+  for (const a of arrows) a.y += a.speed;
+  arrows = arrows.filter(a => a.y < canvas.height + 50);
+
+  const boxX = player.lane * LANE_WIDTH + (LANE_WIDTH - BOX_SIZE) / 2;
+  for (const a of arrows) {
+    const arrowX = a.lane * LANE_WIDTH + (LANE_WIDTH - 20) / 2;
+    if (rectsOverlap(boxX, BOX_Y, BOX_SIZE, BOX_SIZE, arrowX, a.y, 20, a.height)) {
+      endGame();
+      return;
+    }
+  }
+
+  score++;
+  scoreEl.textContent = "Score: " + score;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // lane dividers
+  ctx.strokeStyle = "#333";
+  for (let i = 1; i < LANES; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * LANE_WIDTH, 0);
+    ctx.lineTo(i * LANE_WIDTH, canvas.height);
+    ctx.stroke();
+  }
+
+  // arrows
+  ctx.fillStyle = "#ffb000";
+  for (const a of arrows) {
+    const arrowX = a.lane * LANE_WIDTH + (LANE_WIDTH - 20) / 2;
+    ctx.fillRect(arrowX, a.y, 20, a.height);
+  }
+
+  // player box
+  const boxX = player.lane * LANE_WIDTH + (LANE_WIDTH - BOX_SIZE) / 2;
+  ctx.fillStyle = "#50c8ff";
+  ctx.fillRect(boxX, BOX_Y, BOX_SIZE, BOX_SIZE);
+}
+
+const API = "http://localhost:8000";
+
+function endGame() {
+  running = false;
+  gameOverEl.style.display = "block";
+
+  fetch(API + "/submit-score", {
+    method: "POST",
+    body: JSON.stringify({ name: playerName, score })
+  })
+    .then(() => fetch(API + "/leaderboard"))
+    .then(res => res.json())
+    .then(renderLeaderboard)
+    .catch(err => console.error("Couldn't reach server:", err));
+}
+
+function renderLeaderboard(list) {
+  const el = document.getElementById("leaderboardList");
+  el.innerHTML = list.map((s, i) => `${i + 1}. ${s.name} — ${s.score}`).join("<br>");
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!running) {
+    if (e.key === "r" || e.key === "R") resetGame();
+    return;
+  }
+  if (e.key === "ArrowLeft") player.lane = Math.max(0, player.lane - 1);
+  if (e.key === "ArrowRight") player.lane = Math.min(LANES - 1, player.lane + 1);
+});
+
+loop();
+</script>
+</body>
+</html>
